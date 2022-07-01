@@ -18,7 +18,7 @@ import {
   Button,
   Alert,
 } from 'react-native';
-
+import Share from 'react-native-share';
 import {
   Colors,
   DebugInstructions,
@@ -27,7 +27,7 @@ import {
   ReloadInstructions,
 } from 'react-native/Libraries/NewAppScreen';
 import DocumentPicker from 'react-native-document-picker';
-
+import Recorder from './Recorder';
 import RNFS from 'react-native-fs';
 
 const App = () => {
@@ -66,6 +66,7 @@ const App = () => {
         presentationStyle: 'fullScreen',
         copyTo: 'cachesDirectory',
       });
+      console.log('pickerResult: ' + JSON.stringify(pickerResult, null, 2));
       const fileContents = await readFile(pickerResult.fileCopyUri);
       setLoadedTexts(
         fileContents
@@ -76,6 +77,20 @@ const App = () => {
       onErr(e);
     }
   };
+
+  const singleShare = async path => {
+    try {
+      await Share.open({
+        title: 'Share via whatsapp',
+        message: 'some awesome dangerous message',
+        url: 'file://' + path,
+        type: 'audio/mp3',
+      });
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
   const currentData = loadedTexts.find(data => !data.hasVoice)?.text;
   return (
     <SafeAreaView style={backgroundStyle}>
@@ -95,6 +110,28 @@ const App = () => {
               currentData ? () => setVoiceForText(currentData, 'aaa') : null
             }>
             <Text> {currentData}</Text>
+          </View>
+
+          <Recorder />
+          <View style={{marginVertical: 5}}>
+            <Button
+              onPress={async () => {
+                await singleShare(
+                  RNFS.ExternalDirectoryPath + '/hello.mp3',
+                  // {
+                  // title: 'Share via whatsapp',
+                  // message: 'some awesome dangerous message',
+                  // url: RNFS.ExternalDirectoryPath + '/hello.mp3',
+                  // social: Share.Social.WHATSAPP,
+                  // whatsAppNumber: '9199999999',
+                  // filename: RNFS.ExternalDirectoryPath + '/hello.mp3',
+                  // // useInternalStorage: true,
+                  // type: 'audio/mp3',
+                  // }
+                );
+              }}
+              title="Share to whatsapp"
+            />
           </View>
         </View>
       </ScrollView>

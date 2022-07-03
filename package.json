@@ -10,6 +10,8 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@rneui/base": "^4.0.0-rc.5",
+    "@rneui/themed": "^4.0.0-rc.5",
     "deprecated-react-native-prop-types": "^2.3.0",
     "react": "18.0.0",
     "react-native": "0.69.1",
@@ -18,6 +20,7 @@
     "react-native-file-picker": "^0.0.21",
     "react-native-file-selector": "^1.0.2",
     "react-native-fs": "^2.20.0",
+    "react-native-select-dropdown": "^2.0.4",
     "react-native-share": "^7.6.4",
     "rn-fetch-blob": "^0.12.0"
   },

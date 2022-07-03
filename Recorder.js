@@ -6,18 +6,19 @@ import AudioRecorderPlayer, {
   AudioSourceAndroidType,
 } from 'react-native-audio-recorder-player';
 import * as React from 'react';
-import {Text, View, Button, Alert} from 'react-native';
+import {View, Alert} from 'react-native';
 import RNFetchBlob from 'rn-fetch-blob';
 
+import {Card, Button, Text} from '@rneui/themed';
 import RNFS from 'react-native-fs';
 const audioRecorderPlayer = new AudioRecorderPlayer();
 audioRecorderPlayer.setSubscriptionDuration(0.09);
 const dirs = RNFetchBlob.fs.dirs;
-const path = Platform.select({
-  ios: 'hello.m4a',
-  android: `${dirs.CacheDir}/hello.mp3`,
+const cachePath = Platform.select({
+  ios: 'cached.m4a',
+  android: `${dirs.CacheDir}/cached.mp3`,
 });
-const Recorder = () => {
+const Recorder = props => {
   const [state, setState] = React.useState({
     isLoggingIn: false,
     recordSecs: 0,
@@ -26,21 +27,41 @@ const Recorder = () => {
     currentDurationSec: 0,
     playTime: '00:00:00',
     duration: '00:00:00',
+    couldBeSaved: false,
   });
-
+  React.useEffect(() => {
+    setState({
+      isLoggingIn: false,
+      recordSecs: 0,
+      recordTime: '00:00:00',
+      currentPositionSec: 0,
+      currentDurationSec: 0,
+      playTime: '00:00:00',
+      duration: '00:00:00',
+      couldBeSaved: false,
+    });
+  }, [props.fileName]);
   const onStopRecord = async () => {
     const result = await audioRecorderPlayer.stopRecorder();
     audioRecorderPlayer.removeRecordBackListener();
     setState({
       ...state,
       recordSecs: 0,
+      couldBeSaved: true,
     });
-    console.log('saved in: ' + RNFS.ExternalDirectoryPath + '/hello.mp3');
-    RNFS.copyFile(result, RNFS.ExternalDirectoryPath + '/hello.mp3');
 
-    console.log(result);
+    console.log('Stopped record: ' + cachePath);
   };
-
+  const onSaveRecord = async fileName => {
+    const savepath = RNFS.ExternalDirectoryPath + `/${fileName}.mp3`;
+    console.log('saved in: ' + savepath);
+    await RNFS.copyFile('file://' + cachePath, savepath);
+    props.onRecordSave(savepath);
+    setState({
+      ...state,
+      couldBeSaved: false,
+    });
+  };
   const onStartRecord = async () => {
     const audioSet = {
       AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
@@ -50,16 +71,18 @@ const Recorder = () => {
       AVFormatIDKeyIOS: AVEncodingOption.aac,
     };
     console.log('audioSet', audioSet);
-    const uri = await audioRecorderPlayer.startRecorder(path, audioSet);
+    const uri = await audioRecorderPlayer.startRecorder(cachePath, audioSet);
     audioRecorderPlayer.addRecordBackListener(e => {
       setState({
         ...state,
         recordSecs: e.currentPosition,
         recordTime: audioRecorderPlayer.mmssss(Math.floor(e.currentPosition)),
+        couldBeSaved: false,
       });
     });
     console.log(`uri: ${uri}`);
   };
+
   return (
     <View
       style={{
@@ -69,13 +92,61 @@ const Recorder = () => {
         alignContent: 'center',
         alignSelf: 'center',
       }}>
-      <Text>{state.recordTime}</Text>
-
-      <Button title="record" onPress={() => onStartRecord()} />
-
-      <Button title="stop" mode="outlined" onPress={() => onStopRecord()}>
-        title
-      </Button>
+      <Text
+        style={{
+          fontSize: 20,
+          color: '#888888',
+          fontWeight: 'bold',
+          marginVertical: 20,
+        }}>
+        {state.recordTime}
+      </Text>
+      <View
+        style={{
+          flex: 1,
+          flexDirection: 'row',
+          alignItems: 'center',
+          alignContent: 'center',
+          alignSelf: 'center',
+          marginVertical: 5,
+        }}>
+        <View style={{marginHorizontal: 5}}>
+          <Button
+            containerStyle={{
+              width: 100,
+              borderRadius: 7,
+            }}
+            disabled={props.disabled}
+            title="record"
+            onPress={() => onStartRecord()}
+          />
+        </View>
+        <View style={{marginHorizontal: 5}}>
+          <Button
+            containerStyle={{
+              width: 100,
+              borderRadius: 7,
+            }}
+            disabled={props.disabled || state.recordSecs <= 0}
+            title="Stop"
+            mode="outlined"
+            onPress={() => onStopRecord()}
+          />
+        </View>
+      </View>
+      <View style={{margin: 5}}>
+        <Button
+          containerStyle={{
+            width: 100,
+            borderRadius: 7,
+            marginBottom: 50,
+          }}
+          disabled={props.disabled || !state.couldBeSaved}
+          title="Save"
+          mode="outlined"
+          onPress={() => onSaveRecord(props.fileName)}
+        />
+      </View>
       {/* 
       <Text>
         {state.playTime} / {state.duration}

@@ -12,11 +12,10 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   useColorScheme,
   View,
-  Button,
   Alert,
+  Dimensions,
 } from 'react-native';
 import Share from 'react-native-share';
 import {
@@ -29,13 +28,24 @@ import {
 import DocumentPicker from 'react-native-document-picker';
 import Recorder from './Recorder';
 import RNFS from 'react-native-fs';
+import {Card, Button, Text} from '@rneui/themed';
+import SelectDropdown from 'react-native-select-dropdown';
+
+const tags = {
+  Source: ['Book', 'Instagram', 'Telegram'],
+  Noise: ['Low', 'Medium', 'High'],
+  Length: ['Short', 'Medium', 'Long'],
+};
+const ScreenHeight = Dimensions.get('window').height;
 
 const App = () => {
-  const isDarkMode = useColorScheme() === 'dark';
+  const isDarkMode = false;
   const [loadedTexts, setLoadedTexts] = React.useState([]);
-
+  const [savedRecordPath, setSavedRecordPath] = React.useState('');
+  const [selectedTags, setSelectedTags] = React.useState({});
   const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+    backgroundColor: '#f0f5fa',
+    height: ScreenHeight,
   };
 
   const onErr = e => {
@@ -50,15 +60,21 @@ const App = () => {
       alert('Error: ' + e);
     }
   };
-  const setVoiceForText = (text, voicePath) => {
+
+  const onRecordSave = savePath => {
+    setSavedRecordPath(savePath);
+  };
+
+  const setVoiceForText = (text, voicePath, tags) => {
     loadedTexts
       .filter(data => data.text === text)
       .forEach(data => {
         data.voicePath = voicePath;
         data.hasVoice = true;
+        data.tags;
       });
-    alert(JSON.stringify(loadedTexts, null, 2));
     setLoadedTexts([...loadedTexts]);
+    setSavedRecordPath('');
   };
   const chooseFileAndRead = async () => {
     try {
@@ -71,18 +87,30 @@ const App = () => {
       setLoadedTexts(
         fileContents
           .split('\n')
-          .map(str => ({text: str, voicePath: '', hasVoice: false})),
+          .map(str => ({text: str, voicePath: '', hasVoice: false, tags: {}})),
       );
+
+      setSavedRecordPath('');
     } catch (e) {
       onErr(e);
     }
   };
 
-  const singleShare = async path => {
+  const singleShare = async (path, text, sTags) => {
+    const shareMessage = `
+    Text: ${text}
+    ----------------------
+    Tags
+    ${Object.keys(sTags).map(
+      tagKey => `${tagKey}: ${sTags[tagKey]}
+    `,
+    )}
+    `.replace(/,/g, '');
+    alert(shareMessage);
     try {
       await Share.open({
-        title: 'Share via whatsapp',
-        message: 'some awesome dangerous message',
+        title: 'Share',
+        message: shareMessage,
         url: 'file://' + path,
         type: 'audio/mp3',
       });
@@ -94,43 +122,143 @@ const App = () => {
   const currentData = loadedTexts.find(data => !data.hasVoice)?.text;
   return (
     <SafeAreaView style={backgroundStyle}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         style={backgroundStyle}>
-        <Header />
         <View
           style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
+            backgroundColor: backgroundStyle.backgroundColor,
+            padding: 10,
+            flex: 1,
+            flexDirection: 'column',
+            alignItems: 'center',
+            alignContent: 'center',
+            alignSelf: 'center',
+            justifyContent: 'space-around',
+            width: '100%',
+            // height: ScreenHeight,
+            margin: 0,
           }}>
-          <Button title="Choose txt file" onPress={chooseFileAndRead} />
+          <Button
+            containerStyle={{
+              width: '50%',
+              borderRadius: 7,
+              marginBottom: 20,
+            }}
+            title="Choose txt file"
+            onPress={chooseFileAndRead}
+          />
+          <View
+            style={{
+              marginVertical: 5,
+              flex: 1,
+              flexDirection: 'column',
+              alignItems: 'center',
+              alignContent: 'center',
+              alignSelf: 'center',
+              justifyContent: 'center',
+            }}>
+            {Object.keys(tags).map(function (key, index) {
+              return (
+                <View
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    alignContent: 'center',
+                    alignSelf: 'center',
+                    justifyContent: 'center',
+                  }}>
+                  <Text>{key}:</Text>
+                  <SelectDropdown
+                    buttonStyle={{
+                      borderRadius: 7,
+                      margin: 5,
+                    }}
+                    data={tags[key]}
+                    onSelect={(selectedItem, index) => {
+                      selectedTags[key] = selectedItem;
+                      setSelectedTags({...selectedTags});
+                    }}
+                    buttonTextAfterSelection={(selectedItem, index) => {
+                      return selectedItem;
+                    }}
+                    rowTextForSelection={(item, index) => {
+                      return item;
+                    }}
+                  />
+                </View>
+              );
+            })}
+          </View>
+          <Card
+            onTouchEnd={
+              currentData && savedRecordPath?.length > 0
+                ? () =>
+                    setVoiceForText(currentData, savedRecordPath, selectedTags)
+                : null
+            }
+            containerStyle={{
+              width: '80%',
+              height: 100,
+              flex: 1,
+              padding: 10,
+              borderRadius: 7,
+            }}>
+            <Text
+              style={{
+                fontSize: 12,
+                color: '#777777',
+              }}>
+              {currentData}
+            </Text>
+          </Card>
+
+          <Recorder
+            fileName={currentData}
+            disabled={!currentData}
+            onRecordSave={onRecordSave}
+          />
+          {savedRecordPath && (
+            <Card
+              containerStyle={{
+                width: '80%',
+                padding: 3,
+                borderRadius: 10,
+                marginTop: -30,
+                marginBottom: 20,
+              }}>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: 'gray',
+                }}>
+                {'File saved to:' + savedRecordPath}
+              </Text>
+            </Card>
+          )}
 
           <View
-            onTouchEnd={
-              currentData ? () => setVoiceForText(currentData, 'aaa') : null
-            }>
-            <Text> {currentData}</Text>
-          </View>
-
-          <Recorder />
-          <View style={{marginVertical: 5}}>
+            style={{
+              marginVertical: 5,
+              flex: 1,
+              flexDirection: 'column',
+              alignItems: 'center',
+              alignContent: 'center',
+              alignSelf: 'center',
+              justifyContent: 'center',
+              marginBottom: 30,
+            }}>
             <Button
-              onPress={async () => {
-                await singleShare(
-                  RNFS.ExternalDirectoryPath + '/hello.mp3',
-                  // {
-                  // title: 'Share via whatsapp',
-                  // message: 'some awesome dangerous message',
-                  // url: RNFS.ExternalDirectoryPath + '/hello.mp3',
-                  // social: Share.Social.WHATSAPP,
-                  // whatsAppNumber: '9199999999',
-                  // filename: RNFS.ExternalDirectoryPath + '/hello.mp3',
-                  // // useInternalStorage: true,
-                  // type: 'audio/mp3',
-                  // }
-                );
+              containerStyle={{
+                width: 100,
+                borderRadius: 10,
               }}
-              title="Share to whatsapp"
+              disabled={!savedRecordPath}
+              onPress={async () => {
+                await singleShare(savedRecordPath, currentData, selectedTags);
+              }}
+              title="Share"
             />
           </View>
         </View>

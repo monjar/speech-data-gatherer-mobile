@@ -61,6 +61,17 @@ const App = () => {
     }
   };
 
+  const makeid = length => {
+    var result = '';
+    var characters =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    var charactersLength = characters.length;
+    for (var i = 0; i < length; i++) {
+      result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+    return result;
+  };
+
   const onRecordSave = savePath => {
     setSavedRecordPath(savePath);
   };
@@ -85,9 +96,13 @@ const App = () => {
       console.log('pickerResult: ' + JSON.stringify(pickerResult, null, 2));
       const fileContents = await readFile(pickerResult.fileCopyUri);
       setLoadedTexts(
-        fileContents
-          .split('\n')
-          .map(str => ({text: str, voicePath: '', hasVoice: false, tags: {}})),
+        fileContents.split('\n').map(str => ({
+          text: str,
+          voicePath: '',
+          hasVoice: false,
+          tags: {},
+          fileName: makeid(6),
+        })),
       );
 
       setSavedRecordPath('');
@@ -96,7 +111,7 @@ const App = () => {
     }
   };
 
-  const singleShare = async (path, text, sTags) => {
+  const singleShare = async (path, text, sTags, fName) => {
     const shareMessage = `
     Text: ${text}
     ----------------------
@@ -120,6 +135,7 @@ const App = () => {
   };
 
   const currentData = loadedTexts.find(data => !data.hasVoice)?.text;
+  const currentFileName = loadedTexts.find(data => !data.hasVoice)?.fileName;
   return (
     <SafeAreaView style={backgroundStyle}>
       <ScrollView
@@ -215,7 +231,7 @@ const App = () => {
           </Card>
 
           <Recorder
-            fileName={currentData}
+            fileName={currentFileName}
             disabled={!currentData}
             onRecordSave={onRecordSave}
           />
@@ -256,7 +272,12 @@ const App = () => {
               }}
               disabled={!savedRecordPath}
               onPress={async () => {
-                await singleShare(savedRecordPath, currentData, selectedTags);
+                await singleShare(
+                  savedRecordPath,
+                  currentData,
+                  selectedTags,
+                  currentFileName,
+                );
               }}
               title="Share"
             />

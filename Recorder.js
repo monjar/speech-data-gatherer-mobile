@@ -14,10 +14,7 @@ import RNFS from 'react-native-fs';
 const audioRecorderPlayer = new AudioRecorderPlayer();
 audioRecorderPlayer.setSubscriptionDuration(0.09);
 const dirs = RNFetchBlob.fs.dirs;
-const cachePath = Platform.select({
-  ios: 'cached.m4a',
-  android: `${dirs.CacheDir}/cached.mp3`,
-});
+const cachedir = dirs.CacheDir;
 const Recorder = props => {
   const [state, setState] = React.useState({
     isLoggingIn: false,
@@ -39,6 +36,7 @@ const Recorder = props => {
       playTime: '00:00:00',
       duration: '00:00:00',
       couldBeSaved: false,
+      isPlaying: false,
     });
   }, [props.fileName]);
   const onStopRecord = async () => {
@@ -48,12 +46,12 @@ const Recorder = props => {
       ...state,
       recordSecs: 0,
       couldBeSaved: true,
+      isPlaying: false,
     });
-
-    console.log('Stopped record: ' + cachePath);
   };
   const onSaveRecord = async fileName => {
     const savepath = RNFS.ExternalDirectoryPath + `/${fileName}.mp3`;
+    const cachePath = cachedir + `/${fileName}.mp3`;
     console.log('saved in: ' + savepath);
     await RNFS.copyFile('file://' + cachePath, savepath);
     props.onRecordSave(savepath);
@@ -62,7 +60,45 @@ const Recorder = props => {
       couldBeSaved: false,
     });
   };
-  const onStartRecord = async () => {
+
+  const onStartPlay = async fileName => {
+    console.log('onStartPlay');
+    const msg = await audioRecorderPlayer.startPlayer(
+      cachedir + `/${fileName}.mp3`,
+    );
+    console.log(msg);
+    audioRecorderPlayer.addPlayBackListener(e => {
+      setState({
+        ...state,
+        currentPositionSec: e.currentPosition,
+        currentDurationSec: e.duration,
+        playTime: audioRecorderPlayer.mmssss(Math.floor(e.currentPosition)),
+        duration: audioRecorderPlayer.mmssss(Math.floor(e.duration)),
+        isPlaying: true,
+      });
+      return;
+    });
+  };
+
+  const onPausePlay = async () => {
+    await audioRecorderPlayer.pausePlayer();
+    setState({
+      ...state,
+      isPlaying: false,
+    });
+  };
+
+  const onStopPlay = async () => {
+    console.log('onStopPlay');
+    audioRecorderPlayer.stopPlayer();
+    audioRecorderPlayer.removePlayBackListener();
+    setState({
+      ...state,
+      isPlaying: false,
+    });
+  };
+
+  const onStartRecord = async fileName => {
     const audioSet = {
       AudioEncoderAndroid: AudioEncoderAndroidType.AAC,
       AudioSourceAndroid: AudioSourceAndroidType.MIC,
@@ -71,18 +107,21 @@ const Recorder = props => {
       AVFormatIDKeyIOS: AVEncodingOption.aac,
     };
     console.log('audioSet', audioSet);
-    const uri = await audioRecorderPlayer.startRecorder(cachePath, audioSet);
+    const uri = await audioRecorderPlayer.startRecorder(
+      cachedir + `/${fileName}.mp3`,
+      audioSet,
+    );
     audioRecorderPlayer.addRecordBackListener(e => {
       setState({
         ...state,
         recordSecs: e.currentPosition,
         recordTime: audioRecorderPlayer.mmssss(Math.floor(e.currentPosition)),
         couldBeSaved: false,
+        isPlaying: false,
       });
     });
     console.log(`uri: ${uri}`);
   };
-
   return (
     <View
       style={{
@@ -118,7 +157,7 @@ const Recorder = props => {
             }}
             disabled={props.disabled}
             title="record"
-            onPress={() => onStartRecord()}
+            onPress={() => onStartRecord(props.fileName)}
           />
         </View>
         <View style={{marginHorizontal: 5}}>
@@ -131,6 +170,48 @@ const Recorder = props => {
             title="Stop"
             mode="outlined"
             onPress={() => onStopRecord()}
+          />
+        </View>
+      </View>
+      <Text
+        style={{
+          fontSize: 20,
+          color: '#888888',
+          fontWeight: 'bold',
+          marginVertical: 20,
+        }}>
+        {state.playTime}
+      </Text>
+      <View
+        style={{
+          flex: 1,
+          flexDirection: 'row',
+          alignItems: 'center',
+          alignContent: 'center',
+          alignSelf: 'center',
+          marginVertical: 5,
+        }}>
+        <View style={{marginHorizontal: 5}}>
+          <Button
+            containerStyle={{
+              width: 100,
+              borderRadius: 7,
+            }}
+            disabled={props.disabled || !state.couldBeSaved}
+            title={'Play'}
+            onPress={() => onStartPlay(props.fileName)}
+          />
+        </View>
+        <View style={{marginHorizontal: 5}}>
+          <Button
+            containerStyle={{
+              width: 100,
+              borderRadius: 7,
+            }}
+            disabled={props.disabled || !state.couldBeSaved}
+            title="Stop"
+            mode="outlined"
+            onPress={() => onStopPlay()}
           />
         </View>
       </View>

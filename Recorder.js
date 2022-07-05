@@ -8,9 +8,9 @@ import AudioRecorderPlayer, {
 import * as React from 'react';
 import {View, Alert} from 'react-native';
 import RNFetchBlob from 'rn-fetch-blob';
-
+import {getFileNameFromPath} from './utils';
 import {Card, Button, Text} from '@rneui/themed';
-import RNFS from 'react-native-fs';
+import RNFS, {stat} from 'react-native-fs';
 const audioRecorderPlayer = new AudioRecorderPlayer();
 audioRecorderPlayer.setSubscriptionDuration(0.09);
 const dirs = RNFetchBlob.fs.dirs;
@@ -26,6 +26,9 @@ const Recorder = props => {
     duration: '00:00:00',
     couldBeSaved: false,
   });
+  const DirectoryPath =
+    RNFS.ExternalDirectoryPath + `/${getFileNameFromPath(props.textFilePath)}`;
+
   React.useEffect(() => {
     setState({
       isLoggingIn: false,
@@ -50,10 +53,10 @@ const Recorder = props => {
     });
   };
   const onSaveRecord = async fileName => {
-    const savepath = RNFS.ExternalDirectoryPath + `/${fileName}.mp3`;
+    const savepath = DirectoryPath + `/${fileName}.mp3`;
     const cachePath = cachedir + `/${fileName}.mp3`;
-    console.log('saved in: ' + savepath);
     await RNFS.copyFile('file://' + cachePath, savepath);
+    console.log('saved in: ' + savepath);
     props.onRecordSave(savepath);
     setState({
       ...state,
@@ -138,7 +141,9 @@ const Recorder = props => {
           fontWeight: 'bold',
           marginVertical: 20,
         }}>
-        {state.recordTime}
+        {state.isPlaying
+          ? `${state.playTime}/${state.duration}`
+          : state.recordTime}
       </Text>
       <View
         style={{
@@ -173,15 +178,7 @@ const Recorder = props => {
           />
         </View>
       </View>
-      <Text
-        style={{
-          fontSize: 20,
-          color: '#888888',
-          fontWeight: 'bold',
-          marginVertical: 20,
-        }}>
-        {state.playTime}
-      </Text>
+
       <View
         style={{
           flex: 1,

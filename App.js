@@ -28,26 +28,63 @@ import {
 import DocumentPicker from 'react-native-document-picker';
 import Recorder from './Recorder';
 import RNFS from 'react-native-fs';
-import {Card, Button, Text} from '@rneui/themed';
+import {Card, Button, Text, Input} from '@rneui/themed';
 import SelectDropdown from 'react-native-select-dropdown';
+import {zip, unzip, unzipAssets, subscribe} from 'react-native-zip-archive';
 
+import {getFileNameFromPath} from './utils';
 const tags = {
   Source: ['Book', 'Instagram', 'Telegram'],
   Noise: ['Low', 'Medium', 'High'],
   Length: ['Short', 'Medium', 'Long'],
 };
 const ScreenHeight = Dimensions.get('window').height;
-
+const saveFileLocation = RNFS.ExternalDirectoryPath + '/save.json';
 const App = () => {
   const isDarkMode = false;
+  const [textFilePath, setTextFilePath] = React.useState('');
+  const [currentTextIndex, setCurrentTextIndex] = React.useState(0);
   const [loadedTexts, setLoadedTexts] = React.useState([]);
-  const [savedRecordPath, setSavedRecordPath] = React.useState('');
   const [selectedTags, setSelectedTags] = React.useState({});
+  const [userId, setUserId] = React.useState('');
   const backgroundStyle = {
     backgroundColor: '#f0f5fa',
     height: ScreenHeight,
   };
 
+  const saveStates = async () => {
+    const saveObject = {
+      loadedTexts,
+      textFilePath,
+      selectedTags,
+      userId,
+      currentTextIndex,
+    };
+    await RNFS.writeFile(
+      saveFileLocation,
+      JSON.stringify(saveObject, null, 2),
+      'utf8',
+    );
+    console.log('Saved app state to: ' + saveFileLocation);
+  };
+
+  React.useEffect(() => {
+    const loadStates = async () => {
+      try {
+        const savedState = await RNFS.readFile(saveFileLocation, 'utf8');
+        const parsedSavedState = JSON.parse(savedState);
+        setTextFilePath(parsedSavedState.textFilePath);
+        setCurrentTextIndex(parsedSavedState.currentTextIndex);
+        setLoadedTexts(parsedSavedState.loadedTexts);
+        setSelectedTags(parsedSavedState.selectedTags);
+        setUserId(parsedSavedState.userId);
+        console.log('Loaded app state from: ' + saveFileLocation);
+      } catch (e) {
+        console.log('No save files available.');
+      }
+    };
+    loadStates();
+  }, []);
   const onErr = e => {
     console.log('Pick errror' + e);
   };
@@ -60,7 +97,15 @@ const App = () => {
       alert('Error: ' + e);
     }
   };
-
+  React.useEffect(() => {
+    setSelectedTags(
+      loadedTexts.length > 0 &&
+        loadedTexts[currentTextIndex] &&
+        loadedTexts[currentTextIndex].tags
+        ? loadedTexts[currentTextIndex].tags
+        : {},
+    );
+  }, [currentTextIndex]);
   const makeid = length => {
     var result = '';
     var characters =
@@ -69,24 +114,45 @@ const App = () => {
     for (var i = 0; i < length; i++) {
       result += characters.charAt(Math.floor(Math.random() * charactersLength));
     }
-    return result;
+    return userId + '-' + result;
+  };
+  const saveOutputFile = () => {
+    const saveObject = {
+      userId: userId,
+      texts: loadedTexts,
+    };
+    RNFS.writeFile(
+      RNFS.ExternalDirectoryPath +
+        `/${getFileNameFromPath(textFilePath)}/texts.json`,
+      JSON.stringify(saveObject, null, 2),
+      'utf8',
+    )
+      .then(success => {
+        console.log('FILE WRITTEN!');
+      })
+      .catch(err => {
+        console.log(err.message);
+      });
+    setLoadedTexts([...loadedTexts]);
   };
 
   const onRecordSave = savePath => {
-    setSavedRecordPath(savePath);
+    loadedTexts[currentTextIndex].voicePath = savePath;
+    loadedTexts[currentTextIndex].hasVoice = true;
+    loadedTexts[currentTextIndex].tags = selectedTags;
+
+    nextInfile();
+    saveOutputFile();
+    saveStates();
   };
 
-  const setVoiceForText = (text, voicePath, tags) => {
-    loadedTexts
-      .filter(data => data.text === text)
-      .forEach(data => {
-        data.voicePath = voicePath;
-        data.hasVoice = true;
-        data.tags;
-      });
-    setLoadedTexts([...loadedTexts]);
-    setSavedRecordPath('');
+  const updateTags = () => {
+    loadedTexts[currentTextIndex].tags = selectedTags;
+    saveOutputFile();
+    saveStates();
   };
+
+  const setVoiceForText = (text, voicePath, tags) => {};
   const chooseFileAndRead = async () => {
     try {
       const pickerResult = await DocumentPicker.pickSingle({
@@ -94,48 +160,71 @@ const App = () => {
         copyTo: 'cachesDirectory',
       });
       console.log('pickerResult: ' + JSON.stringify(pickerResult, null, 2));
+      const DirectoryPath =
+        RNFS.ExternalDirectoryPath +
+        `/${getFileNameFromPath(pickerResult.fileCopyUri)}`;
+      await RNFS.mkdir(DirectoryPath);
+      console.log('Directory: ' + DirectoryPath);
+      setTextFilePath(pickerResult.fileCopyUri);
       const fileContents = await readFile(pickerResult.fileCopyUri);
+      const split = fileContents
+        .split('.')
+        .filter(str => str.trim().length > 0);
+      console.log('File data:');
+      split.forEach(line => {
+        console.log(line + '\n--------------------------------------');
+      });
       setLoadedTexts(
-        fileContents.split('\n').map(str => ({
-          text: str,
+        split.map(str => ({
+          text: str.trim(),
           voicePath: '',
           hasVoice: false,
           tags: {},
           fileName: makeid(6),
         })),
       );
-
-      setSavedRecordPath('');
     } catch (e) {
       onErr(e);
     }
   };
 
-  const singleShare = async (path, text, sTags, fName) => {
-    const shareMessage = `
-    Text: ${text}
-    ----------------------
-    Tags
-    ${Object.keys(sTags).map(
-      tagKey => `${tagKey}: ${sTags[tagKey]}
-    `,
-    )}
-    `.replace(/,/g, '');
-    alert(shareMessage);
-    try {
-      await Share.open({
-        title: 'Share',
-        message: shareMessage,
-        url: 'file://' + path,
-        type: 'audio/mp3',
+  const singleShare = async (filePath, loadedTextData) => {
+    const DirectoryPath =
+      RNFS.ExternalDirectoryPath + `/${getFileNameFromPath(filePath)}`;
+    const targetPath = `${DirectoryPath}.zip`;
+    zip(DirectoryPath, targetPath)
+      .then(async zippath => {
+        console.log(`zip completed at ${zippath}`);
+        const shareMessage = JSON.stringify(loadedTextData, null, 2);
+        alert(shareMessage);
+        try {
+          await Share.open({
+            title: 'Share',
+            message: shareMessage,
+            url: 'file://' + targetPath,
+            type: 'application/zip',
+          });
+        } catch (err) {
+          console.log(err);
+        }
+      })
+      .catch(error => {
+        console.error(error);
       });
-    } catch (err) {
-      console.log(err);
-    }
   };
 
-  const currentData = loadedTexts.find(data => !data.hasVoice)?.text;
-  const currentFileName = loadedTexts.find(data => !data.hasVoice)?.fileName;
+  const nextInfile = () => {
+    setCurrentTextIndex((currentTextIndex + 1) % loadedTexts.length);
+  };
+  const prevInFile = () => {
+    setCurrentTextIndex(
+      currentTextIndex > 0 ? currentTextIndex - 1 : loadedTexts.length - 1,
+    );
+  };
+  const currentData = loadedTexts[currentTextIndex]?.text;
+  const currentFileName = loadedTexts[currentTextIndex]?.fileName;
+  const savedRecordPath = loadedTexts[currentTextIndex]?.voicePath;
+  const doneTextsNumber = loadedTexts.filter(text => text.hasVoice).length;
   return (
     <SafeAreaView style={backgroundStyle}>
       <ScrollView
@@ -155,7 +244,41 @@ const App = () => {
             // height: ScreenHeight,
             margin: 0,
           }}>
+          <View
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              alignContent: 'center',
+              alignSelf: 'center',
+              justifyContent: 'center',
+              width: '50%',
+            }}>
+            <Text style={{fontSize: 20}}>ID: </Text>
+            <Input
+              value={userId}
+              placeholder="User ID"
+              inputStyle={{fontSize: 10}}
+              containerStyle={{
+                height: 20,
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                alignContent: 'center',
+                alignSelf: 'center',
+                justifyContent: 'center',
+                margin: 20,
+                borderStyle: 'solid',
+                borderWidth: 2,
+                borderRadius: 7,
+                padding: 20,
+                borderColor: '#0275d8',
+              }}
+              onChangeText={textValue => setUserId(textValue)}
+            />
+          </View>
           <Button
+            disabled={userId.length === 0}
             containerStyle={{
               width: '50%',
               borderRadius: 7,
@@ -166,7 +289,7 @@ const App = () => {
           />
           <View
             style={{
-              marginVertical: 5,
+              marginTop: 5,
               flex: 1,
               flexDirection: 'column',
               alignItems: 'center',
@@ -196,6 +319,7 @@ const App = () => {
                       selectedTags[key] = selectedItem;
                       setSelectedTags({...selectedTags});
                     }}
+                    defaultValue={selectedTags[key]}
                     buttonTextAfterSelection={(selectedItem, index) => {
                       return selectedItem;
                     }}
@@ -206,36 +330,73 @@ const App = () => {
                 </View>
               );
             })}
+            <Button
+              disabled={userId.length === 0 || savedRecordPath?.length === 0}
+              containerStyle={{
+                width: '30%',
+                borderRadius: 7,
+                marginBottom: 20,
+              }}
+              title="Update tags"
+              onPress={updateTags}
+            />
           </View>
-          <Card
-            onTouchEnd={
-              currentData && savedRecordPath?.length > 0
-                ? () =>
-                    setVoiceForText(currentData, savedRecordPath, selectedTags)
-                : null
-            }
-            containerStyle={{
-              width: '80%',
-              height: 100,
-              flex: 1,
-              padding: 10,
-              borderRadius: 7,
+          <Text
+            style={{
+              marginTop: 10,
+              marginBottom: -10,
             }}>
-            <Text
-              style={{
-                fontSize: 12,
-                color: '#777777',
+            {currentTextIndex + 1}/{loadedTexts.length}
+          </Text>
+          <View
+            style={{
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              alignContent: 'center',
+              alignSelf: 'center',
+              justifyContent: 'center',
+            }}>
+            <Button
+              containerStyle={{
+                borderRadius: 50,
+                marginHorizontal: 5,
+              }}
+              title="<"
+              onPress={prevInFile}
+            />
+            <Card
+              containerStyle={{
+                width: '80%',
+                height: 100,
+                flex: 1,
+                padding: 10,
+                borderRadius: 7,
               }}>
-              {currentData}
-            </Text>
-          </Card>
-
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: '#777777',
+                }}>
+                {currentData}
+              </Text>
+            </Card>
+            <Button
+              containerStyle={{
+                borderRadius: 50,
+                marginHorizontal: 5,
+              }}
+              title=">"
+              onPress={nextInfile}
+            />
+          </View>
           <Recorder
             fileName={currentFileName}
             disabled={!currentData}
             onRecordSave={onRecordSave}
+            textFilePath={textFilePath}
           />
-          {savedRecordPath && (
+          {savedRecordPath?.length > 0 && (
             <Card
               containerStyle={{
                 width: '80%',
@@ -254,6 +415,9 @@ const App = () => {
             </Card>
           )}
 
+          <Text>
+            Done: {doneTextsNumber}/{loadedTexts.length}
+          </Text>
           <View
             style={{
               marginVertical: 5,
@@ -270,14 +434,9 @@ const App = () => {
                 width: 100,
                 borderRadius: 10,
               }}
-              disabled={!savedRecordPath}
+              disabled={!(doneTextsNumber === loadedTexts.length)}
               onPress={async () => {
-                await singleShare(
-                  savedRecordPath,
-                  currentData,
-                  selectedTags,
-                  currentFileName,
-                );
+                await singleShare(textFilePath, loadedTexts);
               }}
               title="Share"
             />

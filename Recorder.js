@@ -27,7 +27,8 @@ const Recorder = props => {
     couldBeSaved: false,
   });
   const DirectoryPath =
-    RNFS.ExternalDirectoryPath + `/${getFileNameFromPath(props.textFilePath)}`;
+    RNFS.ExternalDirectoryPath +
+    `/${getFileNameFromPath(props.textFilePath)}-${props.userId}`;
 
   React.useEffect(() => {
     setState({

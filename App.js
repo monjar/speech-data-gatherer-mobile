@@ -67,7 +67,13 @@ const App = () => {
     );
     console.log('Saved app state to: ' + saveFileLocation);
   };
-
+  const setUserID = input => {
+    setLoadedTexts([]);
+    setCurrentTextIndex(0);
+    setTextFilePath('');
+    setSelectedTags({});
+    setUserId(input);
+  };
   React.useEffect(() => {
     const loadStates = async () => {
       try {
@@ -123,7 +129,7 @@ const App = () => {
     };
     RNFS.writeFile(
       RNFS.ExternalDirectoryPath +
-        `/${getFileNameFromPath(textFilePath)}/texts.json`,
+        `/${getFileNameFromPath(textFilePath)}-${userId}/texts.json`,
       JSON.stringify(saveObject, null, 2),
       'utf8',
     )
@@ -162,7 +168,7 @@ const App = () => {
       console.log('pickerResult: ' + JSON.stringify(pickerResult, null, 2));
       const DirectoryPath =
         RNFS.ExternalDirectoryPath +
-        `/${getFileNameFromPath(pickerResult.fileCopyUri)}`;
+        `/${getFileNameFromPath(pickerResult.fileCopyUri)}-${userId}`;
       await RNFS.mkdir(DirectoryPath);
       console.log('Directory: ' + DirectoryPath);
       setTextFilePath(pickerResult.fileCopyUri);
@@ -190,26 +196,42 @@ const App = () => {
 
   const singleShare = async (filePath, loadedTextData) => {
     const DirectoryPath =
-      RNFS.ExternalDirectoryPath + `/${getFileNameFromPath(filePath)}`;
-    const targetPath = `${DirectoryPath}.zip`;
-    zip(DirectoryPath, targetPath)
-      .then(async zippath => {
-        console.log(`zip completed at ${zippath}`);
-        const shareMessage = JSON.stringify(loadedTextData, null, 2);
-        alert(shareMessage);
-        try {
-          await Share.open({
-            title: 'Share',
-            message: shareMessage,
-            url: 'file://' + targetPath,
-            type: 'application/zip',
-          });
-        } catch (err) {
-          console.log(err);
+      RNFS.ExternalDirectoryPath +
+      `/${getFileNameFromPath(filePath)}-${userId}`;
+
+    RNFS.readDir(DirectoryPath)
+      .then(async result => {
+        const fileNames = loadedTextData.map(tData => tData.fileName + '.mp3');
+        console.log('ValidFileNames: ', JSON.stringify(fileNames, null, 2));
+        console.log('GOT RESULT', JSON.stringify(result, null, 2));
+        for (const file of result) {
+          if (file.name.endsWith('mp3') && !fileNames.includes(file.name)) {
+            await RNFS.unlink(file.path);
+          }
         }
+        const targetPath = `${DirectoryPath}.zip`;
+        zip(DirectoryPath, targetPath)
+          .then(async zippath => {
+            console.log(`zip completed at ${zippath}`);
+            const shareMessage = JSON.stringify(loadedTextData, null, 2);
+            alert(shareMessage);
+            try {
+              await Share.open({
+                title: 'Share',
+                message: shareMessage,
+                url: 'file://' + targetPath,
+                type: 'application/zip',
+              });
+            } catch (err) {
+              console.log(err);
+            }
+          })
+          .catch(error => {
+            console.error(error);
+          });
       })
-      .catch(error => {
-        console.error(error);
+      .catch(err => {
+        console.log(err.message, err.code);
       });
   };
 
@@ -274,7 +296,7 @@ const App = () => {
                 padding: 20,
                 borderColor: '#0275d8',
               }}
-              onChangeText={textValue => setUserId(textValue)}
+              onChangeText={textValue => setUserID(textValue)}
             />
           </View>
           <Button
@@ -298,6 +320,7 @@ const App = () => {
               justifyContent: 'center',
             }}>
             {Object.keys(tags).map(function (key, index) {
+              console.log(key + ' ' + JSON.stringify(selectedTags));
               return (
                 <View
                   style={{
@@ -320,6 +343,7 @@ const App = () => {
                       setSelectedTags({...selectedTags});
                     }}
                     defaultValue={selectedTags[key]}
+                    defaultValueByIndex={selectedTags[key] ? null : -1}
                     buttonTextAfterSelection={(selectedItem, index) => {
                       return selectedItem;
                     }}
@@ -331,7 +355,11 @@ const App = () => {
               );
             })}
             <Button
-              disabled={userId.length === 0 || savedRecordPath?.length === 0}
+              disabled={
+                userId.length === 0 ||
+                !savedRecordPath ||
+                savedRecordPath.length === 0
+              }
               containerStyle={{
                 width: '30%',
                 borderRadius: 7,
@@ -395,6 +423,7 @@ const App = () => {
             disabled={!currentData}
             onRecordSave={onRecordSave}
             textFilePath={textFilePath}
+            userId={userId}
           />
           {savedRecordPath?.length > 0 && (
             <Card
